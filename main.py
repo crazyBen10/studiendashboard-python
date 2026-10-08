@@ -1,0 +1,2 @@
+"""Startpunkt des Studiendashboards."""
+
