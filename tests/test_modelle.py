@@ -1,107 +1,245 @@
+"""Automatisierte Tests für das fachliche Domänenmodell."""
+
 from datetime import date
+import unittest
 
-from modelle import Modul, Pruefungsform, Studiengang
-
-
-studiengang = Studiengang(
-    "B.Sc. Softwareentwicklung",
-    date(2026, 4, 1),
-    date(2030, 4, 1),
-    180,
-    2.0
+from modelle import (
+    Lernabschnitt,
+    Modul,
+    ModulStatus,
+    Pruefungsform,
+    Studiengang,
+    ZeitplanStatus,
 )
 
-modul = Modul(
-    "TEST01",
-    "Testmodul",
-    5,
-    42,
-    Pruefungsform.KLAUSUR
-)
 
-studiengang.semester[0].modul_hinzufuegen(modul)
+class PruefungsleistungUndModulTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.modul = Modul(
+            "TEST01",
+            "Testmodul",
+            5,
+            Pruefungsform.KLAUSUR
+        )
 
-print("Semester:", len(studiengang.semester))
-print("Module:", len(studiengang.alle_module()))
-print("Status:", modul.ermittle_status().value)
+    def test_status_wird_aus_fachdaten_abgeleitet(self) -> None:
+        self.assertEqual(self.modul.status, ModulStatus.NICHT_BEGONNEN)
+        self.assertIsNone(self.modul.pruefungsleistung.ist_bestanden())
 
-studiengang.starte_modul(modul, date(2026, 4, 1))
+        self.modul.starten(date(2026, 4, 1))
+        self.assertEqual(self.modul.status, ModulStatus.IN_BEARBEITUNG)
 
-for lernabschnitt in modul.lernabschnitte[:3]:
-    lernabschnitt.abschliessen()
+        self.modul.pruefungsdaten_aktualisieren(
+            date(2026, 5, 15),
+            None,
+            None
+        )
+        self.assertEqual(self.modul.status, ModulStatus.ERGEBNIS_AUSSTEHEND)
 
-print("Status nach Start:", modul.ermittle_status().value)
-print("Lernfortschritt:", modul.berechne_lernfortschritt())
-print(
-    "Zeitplanstatus des Moduls:",
-    modul.ermittle_zeitplan_status(date(2026, 4, 22)).value
-)
+        self.modul.pruefungsdaten_aktualisieren(
+            date(2026, 5, 15),
+            4.0,
+            date(2026, 5, 20)
+        )
+        self.assertTrue(self.modul.pruefungsleistung.ist_bestanden())
+        self.assertEqual(self.modul.status, ModulStatus.BESTANDEN)
 
-modul.pruefungsleistung.abgeben(date(2026, 5, 13))
+        self.modul.pruefungsdaten_aktualisieren(
+            date(2026, 5, 15),
+            4.1,
+            date(2026, 5, 20)
+        )
+        self.assertFalse(self.modul.pruefungsleistung.ist_bestanden())
+        self.assertEqual(self.modul.status, ModulStatus.NICHT_BESTANDEN)
 
-print("Status nach Abgabe:", modul.ermittle_status().value)
-print("Erreichte ECTS vor Bewertung:", studiengang.berechne_erreichte_ects())
-print(
-    "Planungsfortschritt des Studiums:",
-    studiengang.berechne_planungsfortschritt()
-)
+    def test_pruefungsdaten_bleiben_bei_fehler_unveraendert(self) -> None:
+        self.modul.starten(date(2026, 4, 1))
+        self.modul.pruefungsdaten_aktualisieren(
+            date(2026, 5, 1),
+            2.0,
+            date(2026, 5, 5)
+        )
 
-modul.pruefungsleistung.ergebnis_eintragen(
-    2.3,
-    date(2026, 5, 20)
-)
+        with self.assertRaises(ValueError):
+            self.modul.pruefungsdaten_aktualisieren(
+                date(2026, 5, 1),
+                0.7,
+                date(2026, 5, 5)
+            )
 
-print("Status nach Bewertung:", modul.ermittle_status().value)
-print("Erreichte ECTS:", studiengang.berechne_erreichte_ects())
-print("Notendurchschnitt:", studiengang.berechne_notendurchschnitt())
-print("Studienfortschritt:", studiengang.berechne_studienfortschritt())
+        self.assertEqual(self.modul.pruefungsleistung.note, 2.0)
+        self.assertEqual(
+            self.modul.pruefungsleistung.ergebnisdatum,
+            date(2026, 5, 5)
+        )
 
-modul_2 = Modul(
-    "TEST02",
-    "Zweites Testmodul",
-    5,
-    42,
-    Pruefungsform.PORTFOLIO
-)
+    def test_datumsreihenfolge_wird_geprueft(self) -> None:
+        self.modul.starten(date(2026, 4, 1))
 
-modul_3 = Modul(
-    "TEST03",
-    "Drittes Testmodul",
-    5,
-    42,
-    Pruefungsform.KLAUSUR
-)
+        with self.assertRaises(ValueError):
+            self.modul.pruefungsdaten_aktualisieren(
+                date(2026, 5, 2),
+                2.0,
+                date(2026, 5, 1)
+            )
 
-studiengang.semester[0].modul_hinzufuegen(modul_2)
-studiengang.semester[0].modul_hinzufuegen(modul_3)
+    def test_lernfortschritt_und_zeitvergleich(self) -> None:
+        self.modul.starten(date(2026, 4, 1))
+        for lernabschnitt in self.modul.lernabschnitte[:3]:
+            lernabschnitt.abschliessen()
 
-studiengang.starte_modul(modul_2, date(2026, 5, 21))
+        self.assertEqual(self.modul.berechne_lernfortschritt(), 50.0)
+        self.assertEqual(
+            self.modul.vergleiche_lernfortschritt_mit_bearbeitungszeit(
+                date(2026, 4, 22)
+            ),
+            0.0
+        )
+        self.assertEqual(
+            self.modul.ermittle_zeitplan_status(date(2026, 4, 22)),
+            ZeitplanStatus.IM_ZEITPLAN
+        )
 
-try:
-    studiengang.starte_modul(modul_3, date(2026, 5, 22))
-except ValueError as fehler:
-    print("Erwartete Fehlermeldung:", fehler)
+    def test_restzeit_basiert_auf_sechs_wochen_moduldauer(self) -> None:
+        self.modul.starten(date(2026, 9, 12))
 
-modul_2.pruefungsleistung.abgeben(date(2026, 6, 10))
+        self.assertEqual(
+            self.modul.berechne_restzeit_in_tagen(date(2026, 9, 12)),
+            42
+        )
+        self.assertEqual(
+            self.modul.berechne_restzeit_in_tagen(date(2026, 10, 14)),
+            10
+        )
+        self.assertEqual(
+            self.modul.berechne_restzeit_in_tagen(date(2026, 10, 25)),
+            -1
+        )
 
-studiengang.starte_modul(modul_3, date(2026, 6, 11))
+    def test_moduldauer_wird_aus_den_ects_abgeleitet(self) -> None:
+        bachelorarbeit = Modul(
+            "BACHELOR",
+            "Bachelorarbeit",
+            10,
+            Pruefungsform.BACHELORARBEIT
+        )
+        praktikum = Modul(
+            "PRAKTIKUM",
+            "Praktikum",
+            30,
+            Pruefungsform.PRAXISREFLEXION
+        )
 
-print("Status Modul 2:", modul_2.ermittle_status().value)
-print("Status Modul 3:", modul_3.ermittle_status().value)
+        self.assertEqual(self.modul.geplante_dauer_in_tagen, 42)
+        self.assertEqual(bachelorarbeit.geplante_dauer_in_tagen, 84)
+        self.assertEqual(praktikum.geplante_dauer_in_tagen, 252)
 
-testdatum = date(2026, 6, 11)
+    def test_modul_hat_genau_sechs_lernabschnitte(self) -> None:
+        self.assertEqual(len(self.modul.lernabschnitte), 6)
+        self.assertTrue(
+            all(isinstance(abschnitt, Lernabschnitt)
+                for abschnitt in self.modul.lernabschnitte)
+        )
 
-print(
-    "Zeitfortschritt des Studiums:",
-    studiengang.berechne_zeitfortschritt(testdatum)
-)
+    def test_modul_kann_vollstaendig_zurueckgesetzt_werden(self) -> None:
+        self.modul.starten(date(2026, 4, 1))
+        for lernabschnitt in self.modul.lernabschnitte[:3]:
+            lernabschnitt.abschliessen()
+        self.modul.pruefungsdaten_aktualisieren(
+            date(2026, 5, 15),
+            2.0,
+            date(2026, 5, 20)
+        )
 
-print(
-    "Planungsfortschritt des Studiums:",
-    studiengang.berechne_planungsfortschritt()
-)
+        self.modul.zuruecksetzen()
 
-print(
-    "Zeitplanstatus des Studiums:",
-    studiengang.ermittle_zeitplan_status(testdatum).value
-)
+        self.assertIsNone(self.modul.startdatum)
+        self.assertEqual(self.modul.status, ModulStatus.NICHT_BEGONNEN)
+        self.assertEqual(self.modul.berechne_lernfortschritt(), 0.0)
+        self.assertTrue(
+            all(
+                not lernabschnitt.ist_erledigt()
+                for lernabschnitt in self.modul.lernabschnitte
+            )
+        )
+        self.assertIsNone(self.modul.pruefungsleistung.abgabedatum)
+        self.assertIsNone(self.modul.pruefungsleistung.note)
+        self.assertIsNone(self.modul.pruefungsleistung.ergebnisdatum)
+
+
+class StudiengangTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.studiengang = Studiengang(
+            "B.Sc. Angewandte Künstliche Intelligenz",
+            date(2026, 4, 1),
+            date(2030, 4, 1),
+            180,
+            2.0
+        )
+
+    def _modul(self, code: str, ects: int = 5) -> Modul:
+        modul = Modul(
+            code,
+            f"Modul {code}",
+            ects,
+            Pruefungsform.PORTFOLIO
+        )
+        self.studiengang.semester[0].modul_hinzufuegen(modul)
+        return modul
+
+    def test_nur_ein_modul_darf_aktiv_sein(self) -> None:
+        erstes = self._modul("TEST01")
+        zweites = self._modul("TEST02")
+
+        self.studiengang.starte_modul(erstes, date(2026, 4, 1))
+        with self.assertRaises(ValueError):
+            self.studiengang.starte_modul(zweites, date(2026, 4, 2))
+
+        erstes.pruefungsdaten_aktualisieren(
+            date(2026, 5, 1),
+            None,
+            None
+        )
+        self.studiengang.starte_modul(zweites, date(2026, 5, 2))
+        self.assertEqual(zweites.status, ModulStatus.IN_BEARBEITUNG)
+
+    def test_ects_und_notendurchschnitt_sind_abgeleitet(self) -> None:
+        kleines_modul = self._modul("TEST01", ects=5)
+        grosses_modul = self._modul("TEST02", ects=10)
+
+        for modul, note in ((kleines_modul, 1.0), (grosses_modul, 3.0)):
+            modul.starten(date(2026, 4, 1))
+            modul.pruefungsdaten_aktualisieren(
+                date(2026, 5, 1),
+                note,
+                date(2026, 5, 5)
+            )
+
+        self.assertEqual(self.studiengang.berechne_erreichte_ects(), 15)
+        self.assertEqual(
+            self.studiengang.berechne_notendurchschnitt(),
+            2.33
+        )
+        self.assertFalse(self.studiengang.zielnote_erreicht())
+
+    def test_ungueltige_ziele_werden_abgelehnt(self) -> None:
+        with self.assertRaises(ValueError):
+            Studiengang(
+                "Test",
+                date(2026, 4, 1),
+                date(2026, 4, 1),
+                180,
+                2.0
+            )
+        with self.assertRaises(ValueError):
+            Studiengang(
+                "Test",
+                date(2026, 4, 1),
+                date(2030, 4, 1),
+                0,
+                2.0
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
