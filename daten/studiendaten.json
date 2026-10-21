@@ -230,7 +230,7 @@
                     ],
                     "pruefungsleistung": {
                         "pruefungsform": "PORTFOLIO",
-                        "abgabedatum": "2026-09-12",
+                        "abgabedatum": "2026-10-21",
                         "ergebnisdatum": null,
                         "note": null
                     }
@@ -245,7 +245,7 @@
                     "kurscode": "AKI-S2-STAT-DESK",
                     "name": "Statistik - Wahrscheinlichkeit und deskriptive Statistik",
                     "ects": 5,
-                    "startdatum": null,
+                    "startdatum": "2026-10-22",
                     "geplante_dauer_in_tagen": 42,
                     "lernabschnitte": [
                         {

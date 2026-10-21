@@ -1,8 +1,11 @@
 """Tests für die Anlage des vollständigen Studienverlaufsplans."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from main import ergaenze_studienmodule, erstelle_neuen_studiengang
+from main import Anwendung, ergaenze_studienmodule, erstelle_neuen_studiengang
 
 
 class StudienverlaufsplanTest(unittest.TestCase):
@@ -36,6 +39,17 @@ class StudienverlaufsplanTest(unittest.TestCase):
             ].geplante_dauer_in_tagen,
             252
         )
+
+    def test_anwendung_initialisiert_und_startet_controller(self) -> None:
+        with TemporaryDirectory() as ordner:
+            dateipfad = Path(ordner) / "studiendaten.json"
+
+            with patch("main.DashboardController") as controller_klasse:
+                Anwendung(dateipfad).starten()
+
+            self.assertTrue(dateipfad.exists())
+            controller_klasse.assert_called_once()
+            controller_klasse.return_value.starten.assert_called_once_with()
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
-"""Startpunkt des Studiendashboards."""
+"""Startpunkt und Initialisierung des Studiendashboards."""
 
 from datetime import date
 from pathlib import Path
 
-from benutzeroberflaeche import DashboardGUI
+from dashboard_controller import DashboardController
 from datenverwaltung import Datenverwaltung
 from modelle import Modul, Pruefungsform, Studiengang
 
@@ -74,25 +74,38 @@ def ergaenze_studienmodule(studiengang: Studiengang) -> None:
         )
 
 
+class Anwendung:
+    """Initialisiert Datenhaltung, Fachmodell, Controller und Oberfläche."""
+
+    def __init__(self, dateipfad: str | Path | None = None) -> None:
+        """Legt den Speicherpfad für die Studiendaten fest."""
+
+        self.__dateipfad = (
+            Path(dateipfad)
+            if dateipfad is not None
+            else Path(__file__).parent / "daten" / "studiendaten.json"
+        )
+
+    def starten(self) -> None:
+        """Lädt die Daten und startet das Dashboard über den Controller."""
+
+        datenverwaltung = Datenverwaltung(self.__dateipfad)
+        studiengang = datenverwaltung.laden()
+
+        if studiengang is None:
+            studiengang = erstelle_neuen_studiengang()
+
+        ergaenze_studienmodule(studiengang)
+        datenverwaltung.speichern(studiengang)
+
+        controller = DashboardController(studiengang, datenverwaltung)
+        controller.starten()
+
+
 def main() -> None:
-    """Lädt die Studiendaten oder legt beim ersten Start neue Daten an."""
+    """Erzeugt die Anwendung und startet sie."""
 
-    dateipfad = Path(__file__).parent / "daten" / "studiendaten.json"
-    datenverwaltung = Datenverwaltung(dateipfad)
-
-    studiengang = datenverwaltung.laden()
-
-    if studiengang is None:
-        studiengang = erstelle_neuen_studiengang()
-
-    ergaenze_studienmodule(studiengang)
-    datenverwaltung.speichern(studiengang)
-
-    benutzeroberflaeche = DashboardGUI(
-        studiengang,
-        datenverwaltung
-    )
-    benutzeroberflaeche.starten()
+    Anwendung().starten()
 
 
 if __name__ == "__main__":

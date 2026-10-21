@@ -18,9 +18,10 @@ Prototyp eines persönlichen Studiendashboards für das Portfolio im Kurs
 ## Projektaufbau
 
 - `main.py`: startet das Programm
+- `dashboard_controller.py`: steuert Auswahl, Änderungen und Speicherung
 - `modelle.py`: enthält die fachlichen Klassen und Enumerationen
 - `datenverwaltung.py`: lädt und speichert die JSON-Daten
-- `benutzeroberflaeche.py`: enthält die Tkinter-Benutzeroberfläche
+- `benutzeroberflaeche.py`: enthält ausschließlich die Tkinter-Darstellung und Eingabeaufbereitung
 - `daten/studiendaten.json`: enthält die gespeicherten Studiendaten
 - `tests/`: enthält Tests der wichtigsten Funktionen
 
@@ -32,12 +33,22 @@ Prototyp eines persönlichen Studiendashboards für das Portfolio im Kurs
   ein Ergebnisdatum und eine vorherige Abgabe.
 - ECTS, Notendurchschnitt sowie der Vergleich von Lernfortschritt und Zeit
   werden bei Bedarf berechnet.
+- Der Planungsfortschritt eines Moduls besteht aus sechs Lernabschnitten und
+  einem Prüfungsschritt. Nach einer nicht bestandenen Prüfung ist der
+  Prüfungsschritt bis zur erneuten Abgabe wieder offen.
 - Für die Planung besitzt ein 5-ECTS-Modul eine Bearbeitungsdauer von 42
   Tagen. Die Dauer wird proportional aus den ECTS abgeleitet: 10 ECTS ergeben
   84 Tage und 30 ECTS ergeben 252 Tage.
 - Der Studienverlaufsplan umfasst 30 Module mit insgesamt 180 ECTS. Noch nicht
   gewählte Wahlpflichtmodule sind eindeutig als Platzhalter gekennzeichnet.
 - Modulstatus und Prüfungsform werden durch Enumerationen begrenzt.
+
+## Architektur
+
+- `Anwendung` initialisiert Datenverwaltung, Studiengang und Controller.
+- `DashboardController` verbindet Benutzeroberfläche, Fachmodell und Speicherung.
+- `DashboardGUI` stellt die Daten dar und bereitet Formulareingaben auf.
+- Die Fachklassen führen Status- und Fortschrittsberechnungen durch.
 
 ## Tests ausführen
 

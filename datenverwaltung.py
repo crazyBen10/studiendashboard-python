@@ -41,7 +41,8 @@ class Datenverwaltung:
         return self.__dateipfad.exists()
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------
-# Als nächstes erstellen wir Methoden die dazu dienen unsere Daten in die richtige Form (Dictionarys) umzuwandeln damit wir sie auch in JSON speichern können
+# Als nächstes erstellen wir Methoden die dazu dienen unsere Daten in die richtige Form (Dictionarys) umzuwandeln,
+# damit wir sie auch in JSON speichern können
 #-----------------------------------------------------------------------------------------------------------------------------------------------
 
     def __lernabschnitt_in_dict(self,lernabschnitt: Lernabschnitt) -> dict:

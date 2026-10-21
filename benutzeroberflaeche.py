@@ -8,6 +8,7 @@ das dauerhafte Speichern übernimmt die ``Datenverwaltung``.
 # ``date`` liefert das heutige Datum für Fortschrittsberechnungen. 
 # Mit ``datetime`` werden Datumsangaben aus den Eingabefeldern eingelesen.
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 # Tkinter stellt alle Fenster und Steuerelemente bereit. ``messagebox`` wird
 # separat importiert, damit Validierungsfehler als Dialog angezeigt werden.
@@ -16,8 +17,10 @@ from tkinter import messagebox
 
 # Die Oberfläche arbeitet mit der Speicherklasse und den fachlichen
 # Modellobjekten, statt Berechnungs- oder Persistenzlogik selbst nachzubauen.
-from datenverwaltung import Datenverwaltung
 from modelle import *
+
+if TYPE_CHECKING:
+    from dashboard_controller import DashboardController
 
 
 class DashboardGUI:
@@ -40,16 +43,14 @@ class DashboardGUI:
 
     def __init__(
         self,
-        studiengang: Studiengang,
-        datenverwaltung: Datenverwaltung
+        controller: "DashboardController"
     ) -> None:
-        """Erstellt das Hauptfenster und speichert die benötigten Objekte."""
+        """Erstellt das Hauptfenster und verbindet es mit dem Controller."""
 
         # Die übergebenen Objekte bleiben die gemeinsame Datenquelle aller
         # Ansichten. Es werden bewusst keine Kopien angelegt, damit Änderungen
         # aus dem Formular sofort im gesamten Dashboard sichtbar werden.
-        self.__studiengang = studiengang
-        self.__datenverwaltung = datenverwaltung
+        self.__controller = controller
 
         # Das Tk-Hauptfenster erhält Titel, Start- und Mindestgröße sowie die Grundfarbe. 
         # Über das WM-Protokoll wird auch beim Schließen über das Fenstersymbol zuerst die Speicherroutine ausgeführt.
@@ -60,17 +61,13 @@ class DashboardGUI:
         self.__hauptfenster.configure(bg=self.HINTERGRUND)
         self.__hauptfenster.protocol("WM_DELETE_WINDOW", self.__beenden)
 
-        # Die Auswahl wird für die Hervorhebung in der linken Liste gemerkt.
-        # Zu Beginn wurde noch kein Modul durch die Person ausgewählt.
-        self.__ausgewaehltes_modul: Modul | None = None
-
         # Die linke Spalte behält ihre Breite. Der rechte Bereich wächst mit.
         self.__hauptfenster.grid_rowconfigure(0, weight=1)
         self.__hauptfenster.grid_columnconfigure(0, weight=0)
         self.__hauptfenster.grid_columnconfigure(1, weight=1)
 
         # Nach der Fenstereinrichtung wird die komplette erste Ansicht erzeugt.
-        self.dashboard_aktualisieren()
+        self.dashboard_anzeigen()
 
     def starten(self) -> None:
         """Startet die Ereignisschleife der Benutzeroberfläche."""
@@ -79,8 +76,8 @@ class DashboardGUI:
         # Der Aufruf blockiert, bis das Hauptfenster geschlossen wird.
         self.__hauptfenster.mainloop()
 
-    def dashboard_aktualisieren(self) -> None:
-        """Baut das Dashboard mit den aktuellen Studiendaten neu auf."""
+    def dashboard_anzeigen(self) -> None:
+        """Baut die Dashboard-Ansicht mit den aktuellen Daten neu auf."""
 
         # Alle bisherigen Widgets werden entfernt. 
         # Der vollständige Neuaufbau ist hier übersichtlicher als zahlreiche Einzelwerte zu 
@@ -92,18 +89,10 @@ class DashboardGUI:
         self.__erstelle_modulbereich()
         self.__erstelle_hauptbereich()
 
-    def speichern(self) -> None:
-        """Speichert den aktuellen Stand des Studiengangs."""
-
-        # Die konkrete Dateiverarbeitung bleibt Aufgabe der Datenverwaltung.
-        self.__datenverwaltung.speichern(self.__studiengang)
-
     def __beenden(self) -> None:
-        """Speichert die Daten und schließt danach das Hauptfenster."""
+        """Meldet das Beenden an den Controller und schließt das Fenster."""
 
-        # Vor dem Zerstören des Fensters werden noch nicht gesicherte Änderungen geschrieben. 
-        # Erst anschließend endet die Tkinter-Anwendung.
-        self.speichern()
+        self.__controller.beenden()
         self.__hauptfenster.destroy()
 
 
@@ -281,7 +270,7 @@ class DashboardGUI:
 
         # Die Modellhierarchie Studiengang -> Semester -> Modul wird direkt in dieselbe visuelle Gruppierung übersetzt. 
         # Leere Semester erscheinen nicht, weil eine Überschrift ohne Einträge keinen Mehrwert hätte.
-        for semester in self.__studiengang.semester:
+        for semester in self.__controller.studiengang.semester:
             if len(semester.module) == 0:
                 continue
 
@@ -309,7 +298,9 @@ class DashboardGUI:
             # Innerhalb des Semesters erhält jedes Modul eine eigene anklickbare Zeile. 
             # Statusfarbe und -symbol stammen aus zentralen Hilfsmethoden.
             for modul in semester.module:
-                ausgewaehlt = modul is self.__ausgewaehltes_modul
+                ausgewaehlt = (
+                    modul is self.__controller.ausgewaehltes_modul
+                )
                 hintergrund = "#0D2A44" if ausgewaehlt else self.HINTERGRUND
                 status = modul.status
                 statusfarbe = self.__statusfarbe(status)
@@ -425,9 +416,9 @@ class DashboardGUI:
     def __modul_auswaehlen(self, modul: Modul) -> None:
         """Speichert die Auswahl und öffnet das Bearbeitungsfenster."""
 
-        # Die Referenz dient später der farblichen Hervorhebung; anschließend
-        # wird für genau dieses Modul der modale Bearbeitungsdialog geöffnet.
-        self.__ausgewaehltes_modul = modul
+        # Die Referenz dient später der farblichen Hervorhebung
+        # Anschließend wird für genau dieses Modul der modale Bearbeitungsdialog geöffnet.
+        self.__controller.modul_auswaehlen(modul)
         self.__oeffne_bearbeitungsfenster(modul)
 
 #------------------------------------------------------------------------------------------------------------------
@@ -496,8 +487,7 @@ class DashboardGUI:
         )
         kopfbereich.grid_columnconfigure(0, weight=1)
 
-        # Ein eigener Rahmen hält den langen Studiengangnamen unabhängig von den
-        # Kennzahlen auf der rechten Seite.
+        # Ein eigener Rahmen hält den langen Studiengangnamen unabhängig von den Kennzahlen auf der rechten Seite.
         titelbereich = tk.Frame(
             kopfbereich,
             bg=self.HINTERGRUND
@@ -513,7 +503,7 @@ class DashboardGUI:
         # durch einen separat gepflegten Oberflächentext abweichen kann.
         tk.Label(
             titelbereich,
-            text=self.__studiengang.name,
+            text=self.__controller.studiengang.name,
             font=("Segoe UI", 32, "bold"),
             bg=self.HINTERGRUND,
             fg=self.TEXT
@@ -533,8 +523,12 @@ class DashboardGUI:
 
         # Beide Werte sind fachlich abgeleitet. Die GUI ruft deshalb die Methoden
         # des Studiengangs auf, statt bestandene Module selbst auszuwerten.
-        erreichte_ects = self.__studiengang.berechne_erreichte_ects()
-        studienfortschritt = self.__studiengang.berechne_studienfortschritt()
+        erreichte_ects = (
+            self.__controller.studiengang.berechne_erreichte_ects()
+        )
+        studienfortschritt = (
+            self.__controller.studiengang.berechne_studienfortschritt()
+        )
 
         # Das tagesaktuelle Datum macht deutlich, auf welchen Stand sich die angezeigten Fortschrittswerte beziehen.
         tk.Label(
@@ -549,7 +543,7 @@ class DashboardGUI:
         tk.Label(
             fortschrittsbereich,
             text=(
-                f"{erreichte_ects} von {self.__studiengang.ziel_ects} "
+                f"{erreichte_ects} von {self.__controller.studiengang.ziel_ects} "
                 "ECTS-Punkten"
             ),
             font=("Segoe UI", 11),
@@ -614,8 +608,8 @@ class DashboardGUI:
     def __erstelle_fortschrittskarte(self, elternelement: tk.Widget) -> None:
         """Erstellt die große Karte mit Studien- und Zeitfortschritt."""
 
-        # Die Karte belegt die linke Inhaltsspalte. Rahmenfarbe und ein Pixel
-        # Hervorhebung sorgen für die Abgrenzung zum gleichfarbigen Hintergrund.
+        # Die Karte belegt die linke Inhaltsspalte. 
+        # Rahmenfarbe und ein Pixel Hervorhebung sorgen für die Abgrenzung zum gleichfarbigen Hintergrund.
         karte = tk.Frame(
             elternelement,
             bg=self.KARTE,
@@ -647,8 +641,8 @@ class DashboardGUI:
             pady=(18, 0)
         )
 
-        # Der Canvas füllt den restlichen Kartenraum. Seine endgültigen Maße sind
-        # erst nach dem Layout bekannt, daher erfolgt das Zeichnen ereignisbasiert.
+        # Der Canvas füllt den restlichen Kartenraum. 
+        # Seine endgültigen Maße sind erst nach dem Layout bekannt, daher erfolgt das Zeichnen ereignisbasiert.
         kreis = tk.Canvas(
             karte,
             bg=self.KARTE,
@@ -663,9 +657,17 @@ class DashboardGUI:
         )
 
         # Die drei Kennzahlen stammen aus dem fachlichen Modell: ECTS-basierter Planungsfortschritt, verstrichene Studienzeit und Notendurchschnitt.
-        planungsfortschritt = self.__studiengang.berechne_planungsfortschritt()
-        zeitfortschritt = self.__studiengang.berechne_zeitfortschritt(date.today())
-        notendurchschnitt = self.__studiengang.berechne_notendurchschnitt()
+        planungsfortschritt = (
+            self.__controller.studiengang.berechne_planungsfortschritt()
+        )
+        zeitfortschritt = (
+            self.__controller.studiengang.berechne_zeitfortschritt(
+                date.today()
+            )
+        )
+        notendurchschnitt = (
+            self.__controller.studiengang.berechne_notendurchschnitt()
+        )
 
         # Ohne bewertete Prüfungen wird ein Platzhalter angezeigt. 
         # Andernfalls signalisiert Grün oder Orange, ob die hinterlegte Zielnote erreicht ist.
@@ -674,7 +676,7 @@ class DashboardGUI:
             notenfarbe = self.GRAU
         else:
             notentext = f"{notendurchschnitt:.1f}".replace(".", ",")
-            if self.__studiengang.zielnote_erreicht():
+            if self.__controller.studiengang.zielnote_erreicht():
                 notenfarbe = self.GRUEN
             else:
                 notenfarbe = self.ORANGE
@@ -780,8 +782,8 @@ class DashboardGUI:
         )
 
         # Auch Kreiswerte werden auf 0 bis 100 Prozent begrenzt. 3,6 Grad pro
-        # Prozent wandeln den Wert in den Winkel eines Vollkreises um. Das
-        # negative Vorzeichen lässt den Bogen von oben im Uhrzeigersinn laufen.
+        # Prozent wandeln den Wert in den Winkel eines Vollkreises um. 
+        # Das negative Vorzeichen lässt den Bogen von oben im Uhrzeigersinn laufen.
         sichtbarer_fortschritt = max(0.0, min(100.0, fortschritt))
         canvas.create_arc(
             *koordinaten,
@@ -848,7 +850,7 @@ class DashboardGUI:
 
         # Die Hilfsmethode entscheidet anhand einer festgelegten Priorität,
         # welches Modul für die Person momentan am relevantesten ist.
-        modul = self.__finde_aktuelles_modul()
+        modul = self.__controller.aktuelles_modul()
 
         # Ohne Modul darf kein Bearbeiten-Button entstehen, weil kein Zielobjekt übergeben werden könnte.
         if modul is not None:
@@ -966,8 +968,8 @@ class DashboardGUI:
     ) -> None:
         """Zeichnet die sechs Lernabschnitte als Kreisstücke."""
 
-        # Aus Gesamtzahl und erledigten Abschnitten wird der Wert in der Mitte
-        # berechnet. Die Nullprüfung schützt vor einer Division durch null, falls
+        # Aus Gesamtzahl und erledigten Abschnitten wird der Wert in der Mitte berechnet. 
+        # Die Nullprüfung schützt vor einer Division durch null, falls
         # künftig einmal ein Modul ohne Lernabschnitte modelliert wird.
         anzahl = len(modul.lernabschnitte)
         erledigt = sum(
@@ -1056,7 +1058,7 @@ class DashboardGUI:
 
         # Das Modell vergleicht fachlich Lern- und Zeitfortschritt. Die GUI ordnet
         # dem Ergebnis lediglich einen gut lesbaren Erklärungstext zu.
-        zeitplanstatus = self.__studiengang.ermittle_zeitplan_status(
+        zeitplanstatus = self.__controller.studiengang.ermittle_zeitplan_status(
             date.today()
         )
         statusmeldungen = {
@@ -1087,7 +1089,7 @@ class DashboardGUI:
         tk.Label(
             datumszeile,
             text=self.__formatiere_datum(
-                self.__studiengang.geplantes_enddatum
+                self.__controller.studiengang.geplantes_enddatum
             ),
             font=("Segoe UI", 21, "bold"),
             bg=self.KARTE,
@@ -1138,35 +1140,6 @@ class DashboardGUI:
             justify="left"
         ).pack(anchor="w", pady=(3, 10))
 
-    def __finde_aktuelles_modul(self) -> Modul | None:
-        """Sucht das aktive oder als Nächstes relevante Modul."""
-
-        # ``alle_module`` löst die Semesterstruktur in eine geordnete Liste auf.
-        # Die folgenden Schleifen bilden bewusst eine fachliche Prioritätenfolge.
-        module = self.__studiengang.alle_module()
-
-        # Ein gerade bearbeitetes Modul hat immer die höchste Anzeigepriorität.
-        for modul in module:
-            if modul.status == ModulStatus.IN_BEARBEITUNG:
-                return modul
-
-        # Nach einer Abgabe bleibt das Modul relevant, solange die Note fehlt.
-        for modul in module:
-            if modul.status == ModulStatus.ERGEBNIS_AUSSTEHEND:
-                return modul
-
-        # Gibt es kein laufendes Modul, wird das nächste noch offene vorgeschlagen.
-        for modul in module:
-            if modul.status == ModulStatus.NICHT_BEGONNEN:
-                return modul
-
-        # Sind sämtliche Module abgeschlossen, zeigt die Karte ersatzweise das
-        # letzte Modul. Nur eine vollständig leere Liste führt zu ``None``.
-        if len(module) > 0:
-            return module[-1]
-
-        return None
-
     def __erstelle_symbolkreis(
         self,
         elternelement: tk.Widget,
@@ -1177,8 +1150,8 @@ class DashboardGUI:
     ) -> tk.Canvas:
         """Erstellt einen farbigen Kreis mit einem Symbol in der Mitte."""
 
-        # Die Hintergrundfarbe wird vom Elternelement übernommen. Dadurch lässt
-        # sich die Hilfsmethode sowohl in der Navigation als auch in Karten nutzen.
+        # Die Hintergrundfarbe wird vom Elternelement übernommen. 
+        # Dadurch lässt sich die Hilfsmethode sowohl in der Navigation als auch in Karten nutzen.
         kreis = tk.Canvas(
             elternelement,
             width=groesse,
@@ -1186,8 +1159,8 @@ class DashboardGUI:
             bg=elternelement.cget("bg"),
             highlightthickness=0
         )
-        # Das Oval füllt beinahe den ganzen Canvas; je ein Pixel Rand verhindert
-        # ein Abschneiden an der Zeichenfläche.
+        # Das Oval füllt beinahe den ganzen Canvas
+        # Je ein Pixel Rand verhindert ein Abschneiden an der Zeichenfläche.
         kreis.create_oval(
             1,
             1,
@@ -1266,6 +1239,19 @@ class DashboardGUI:
             raise ValueError(
                 f"{feldname} muss im Format TT.MM.JJJJ eingegeben werden."
             ) from fehler
+
+    @classmethod
+    def __optionales_datum_einlesen(
+        cls,
+        text: str,
+        feldname: str
+    ) -> date | None:
+        """Gibt bei leerer Eingabe ``None``, sonst ein geprüftes Datum zurück."""
+
+        bereinigter_text = text.strip()
+        if not bereinigter_text:
+            return None
+        return cls.__datum_einlesen(bereinigter_text, feldname)
 
     def __oeffne_bearbeitungsfenster(self, modul: Modul) -> None:
         """Öffnet ein Formular zum Bearbeiten eines Moduls."""
@@ -1518,7 +1504,7 @@ class DashboardGUI:
         tk.Button(
             schaltflaechen,
             text="Änderungen speichern",
-            command=lambda: self.__aenderungen_speichern(
+            command=lambda: self.__formular_absenden(
                 modul,
                 starten_var,
                 startdatum_var,
@@ -1562,12 +1548,10 @@ class DashboardGUI:
         if not bestaetigt:
             return
 
-        # Das Modell stellt den konsistenten Ausgangszustand her. 
-        # Danach wird die Änderung sofort gespeichert und in allen Dashboard-Karten angezeigt.
-        modul.zuruecksetzen()
-        self.speichern()
+        # Der Controller setzt das Modell zurück, speichert es und aktualisiert
+        # anschließend die Anzeige.
+        self.__controller.modul_zuruecksetzen(modul)
         fenster.destroy()
-        self.dashboard_aktualisieren()
 
     def __erstelle_formularbereich(
         self,
@@ -1652,7 +1636,7 @@ class DashboardGUI:
         # gezielt auf dieses Feld gesetzt werden kann.
         return eingabefeld
 
-    def __aenderungen_speichern(
+    def __formular_absenden(
         self,
         modul: Modul,
         starten_var: tk.BooleanVar,
@@ -1663,37 +1647,16 @@ class DashboardGUI:
         ergebnisdatum_var: tk.StringVar,
         fenster: tk.Toplevel
     ) -> None:
-        """Prüft die Formulareingaben und speichert die Moduländerungen."""
+        """Liest Formulareingaben und übergibt sie an den Controller."""
 
         # Alle erwartbaren Eingabefehler werden gemeinsam abgefangen und im
         # geöffneten Dialog angezeigt; das Fenster bleibt dann zur Korrektur offen.
         try:
-            # Zunächst wird festgestellt, ob die Person fachliche Inhalte ändern möchte. 
-            # Das ist wichtig, wenn ein noch nicht gestartetes Modul ohne aktivierte Start-Checkbox bearbeitet werden soll.
-            lernstatus_geaendert = any(
-                variable.get() != lernabschnitt.ist_erledigt()
-                for lernabschnitt, variable in lernabschnitt_variablen
-            )
-            pruefungsdaten_eingegeben = bool(
-                abgabedatum_var.get().strip()
-                or note_var.get().strip()
-                or ergebnisdatum_var.get().strip()
-            )
-
-            # Zuerst werden sämtliche Eingaben gelesen und fachlich geprüft.
-            # Erst wenn alles gültig ist, werden die Objekte verändert. 
-            # Dadurch hinterlässt ein später entdeckter Fehler keinen halbfertigen Stand.
-            # Das effektive neue Startdatum hängt davon ab, ob das Modul bereits läuft. 
-            # Änderungen an Lern- oder Prüfungsdaten setzen einen Start voraus.
             if modul.startdatum is None:
                 if starten_var.get():
                     neues_startdatum = self.__datum_einlesen(
                         startdatum_var.get().strip(),
                         "Das Startdatum"
-                    )
-                elif lernstatus_geaendert or pruefungsdaten_eingegeben:
-                    raise ValueError(
-                        "Das Modul muss vor der Bearbeitung gestartet werden."
                     )
                 else:
                     neues_startdatum = None
@@ -1703,95 +1666,37 @@ class DashboardGUI:
                     "Das Startdatum"
                 )
 
-            # Leere optionale Datumsfelder werden zu ``None``
-            # nicht leere Werte durchlaufen den zentralen Parser (Code, der Text liest, prüft und in einen anderen Datentyp umwandelt)
-            abgabedatum_text = abgabedatum_var.get().strip()
-            if abgabedatum_text is not None:
-                abgabedatum = self.__datum_einlesen(abgabedatum_text, "Das Abgabedatum")
-            else:
-                None
-
-            # Note und Ergebnisdatum bilden ein fachliches Paar: Eine bewertete
-            # Leistung benötigt beide Werte, keiner darf allein gespeichert werden.
+            # Optionale Datumsfelder werden nur bei vorhandener Eingabe geparst.
+            abgabedatum = self.__optionales_datum_einlesen(
+                abgabedatum_var.get(),
+                "Das Abgabedatum"
+            )
             note_text = note_var.get().strip()
-            ergebnisdatum_text = ergebnisdatum_var.get().strip()
+            note = (
+                float(note_text.replace(",", "."))
+                if note_text
+                else None
+            )
+            ergebnisdatum = self.__optionales_datum_einlesen(
+                ergebnisdatum_var.get(),
+                "Das Ergebnisdatum"
+            )
+            lernstatus = [
+                (lernabschnitt, variable.get())
+                for lernabschnitt, variable in lernabschnitt_variablen
+            ]
 
-            if note_text:
-                if not ergebnisdatum_text:
-                    raise ValueError(
-                        "Bitte trage auch das Ergebnisdatum ein."
-                    )
-
-                # Für die Python-Konvertierung wird das deutsche Komma temporär
-                # in den erwarteten Dezimalpunkt umgewandelt.
-                note = float(note_text.replace(",", "."))
-                ergebnisdatum = self.__datum_einlesen(
-                    ergebnisdatum_text,
-                    "Das Ergebnisdatum"
-                )
-            elif ergebnisdatum_text and not note_text:
-                raise ValueError(
-                    "Zum Ergebnisdatum muss auch eine Note eingetragen werden."
-                )
-            else:
-                note = None
-                ergebnisdatum = None
-
-            # Die Modellklasse prüft Wertebereiche und Datumsreihenfolge. 
-            # Damit gelten in Oberfläche und sonstigen Aufrufern dieselben Fachregeln.
-            Pruefungsleistung.validiere_daten(
+            # Fachliche Validierung, Zustandsänderung, Speicherung und
+            # Aktualisierung liegen vollständig beim Controller.
+            self.__controller.modulaenderungen_speichern(
+                modul,
+                neues_startdatum,
+                lernstatus,
                 abgabedatum,
                 note,
                 ergebnisdatum
             )
-
-            # Auch eine formal gültige Abgabe darf keinem ungestarteten Modul zugeordnet werden.
-            if abgabedatum is not None:
-                if neues_startdatum is None and modul.startdatum is None:
-                    raise ValueError(
-                        "Das Modul muss vor der Prüfungsabgabe gestartet werden."
-                    )
-
-            # Beim erstmaligen Start stellt der Studiengang sicher, dass nicht
-            # parallel bereits ein anderes Modul aktiv bearbeitet wird.
-            if modul.startdatum is None and neues_startdatum is not None:
-                if self.__studiengang.hat_aktives_modul(
-                    zu_startendes_modul=modul):
-                    raise ValueError("Es darf nur ein Modul gleichzeitig bearbeitet werden.")
-
-
-            # Ab hier sind alle Eingaben gültig und können gemeinsam übernommen werden.
-            # Ein neuer Start läuft über den Studiengang, eine reine Korrektur des
-            # Datums dagegen direkt über die dafür vorgesehene Modulmethode.
-            if modul.startdatum is None and neues_startdatum is not None:
-                self.__studiengang.starte_modul(modul, neues_startdatum)
-            elif (
-                neues_startdatum is not None
-                and neues_startdatum != modul.startdatum
-            ):
-                modul.startdatum_aendern(neues_startdatum)
-
-            # Jeder Checkboxwert wird nun in die passende fachliche Zustands-
-            # methode übersetzt; die GUI setzt keine internen Attribute direkt.
-            for lernabschnitt, variable in lernabschnitt_variablen:
-                if variable.get():
-                    lernabschnitt.abschliessen()
-                else:
-                    lernabschnitt.zuruecksetzen()
-
-            # Die drei zusammengehörigen Prüfungswerte werden atomar an das Modul
-            # übergeben, das daraus auch seinen abgeleiteten Status bestimmt.
-            modul.pruefungsdaten_aktualisieren(
-                abgabedatum,
-                note,
-                ergebnisdatum
-            )
-
-            # Erst nach erfolgreicher Übernahme wird persistiert. Danach schließt
-            # der Dialog und das Dashboard wird aus den neuen Daten neu aufgebaut.
-            self.speichern()
             fenster.destroy()
-            self.dashboard_aktualisieren()
 
         except (TypeError, ValueError) as fehler:
             # Sowohl Konvertierungsfehler als auch fachliche Validierungsfehler

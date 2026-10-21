@@ -398,12 +398,24 @@ class Modul:
 
 
     def berechne_planungsfortschritt(self) -> float:
-        """Berechnet den Fortschritt des Moduls für die Zeitplanung."""
+        """Berechnet den Fortschritt aus sechs Lern- und einem Prüfungsschritt."""
 
-        if self.__pruefungsleistung.ist_abgegeben():
-            return 100.0
-        # Wenn das Modul noch nicht abgegeben wurde, berechne den Fortschritt basierend auf den erledigten Lernabschnitten
-        return self.berechne_lernfortschritt()
+        erledigte_schritte = sum(
+            lernabschnitt.ist_erledigt()
+            for lernabschnitt in self.__lernabschnitte
+        )
+
+        # Eine Abgabe zählt als siebter Planungsschritt. 
+        # Bei einer nicht bestandenen Prüfung wird dieser Schritt für den nächsten Versuch
+        # wieder geöffnet, bis eine erneute Abgabe eingetragen wird.
+        pruefungsschritt_erledigt = (
+            self.__pruefungsleistung.ist_abgegeben()
+            and self.__pruefungsleistung.ist_bestanden() is not False
+        )
+        if pruefungsschritt_erledigt:
+            erledigte_schritte += 1
+
+        return round(erledigte_schritte / 7 * 100, 2)
 
 
 
@@ -695,7 +707,7 @@ class Studiengang:
 
 
     def berechne_notendurchschnitt(self) -> float | None:
-        """Berechnet den Notendurchschnitt des Studiengangs basierend auf den bewerteten Modulen."""
+        """Berechnet den ungewichteten Durchschnitt bestandener Module."""
 
         benotete_module = [
             modul
@@ -707,13 +719,12 @@ class Studiengang:
         if not benotete_module:
             return None
 
-        ects_summe = sum(modul.ects for modul in benotete_module)
-        gewichtete_noten = sum(
-            modul.pruefungsleistung.note * modul.ects
+        notensumme = sum(
+            modul.pruefungsleistung.note
             for modul in benotete_module
             if modul.pruefungsleistung.note is not None
         )
-        return round(gewichtete_noten / ects_summe, 2)
+        return round(notensumme / len(benotete_module), 2)
 
 
     def berechne_zeitfortschritt(self, heute: date) -> float:

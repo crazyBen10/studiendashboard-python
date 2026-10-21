@@ -91,14 +91,35 @@ class PruefungsleistungUndModulTest(unittest.TestCase):
         self.assertEqual(self.modul.berechne_lernfortschritt(), 50.0)
         self.assertEqual(
             self.modul.vergleiche_lernfortschritt_mit_bearbeitungszeit(
-                date(2026, 4, 22)
+                date(2026, 4, 19)
             ),
             0.0
         )
         self.assertEqual(
-            self.modul.ermittle_zeitplan_status(date(2026, 4, 22)),
+            self.modul.ermittle_zeitplan_status(date(2026, 4, 19)),
             ZeitplanStatus.IM_ZEITPLAN
         )
+
+    def test_planungsfortschritt_verwendet_sieben_schritte(self) -> None:
+        self.modul.starten(date(2026, 4, 1))
+        for lernabschnitt in self.modul.lernabschnitte:
+            lernabschnitt.abschliessen()
+
+        self.assertEqual(self.modul.berechne_planungsfortschritt(), 85.71)
+
+        self.modul.pruefungsdaten_aktualisieren(
+            date(2026, 5, 1),
+            None,
+            None
+        )
+        self.assertEqual(self.modul.berechne_planungsfortschritt(), 100.0)
+
+        self.modul.pruefungsdaten_aktualisieren(
+            date(2026, 5, 1),
+            5.0,
+            date(2026, 5, 5)
+        )
+        self.assertEqual(self.modul.berechne_planungsfortschritt(), 85.71)
 
     def test_restzeit_basiert_auf_sechs_wochen_moduldauer(self) -> None:
         self.modul.starten(date(2026, 9, 12))
@@ -218,9 +239,9 @@ class StudiengangTest(unittest.TestCase):
         self.assertEqual(self.studiengang.berechne_erreichte_ects(), 15)
         self.assertEqual(
             self.studiengang.berechne_notendurchschnitt(),
-            2.33
+            2.0
         )
-        self.assertFalse(self.studiengang.zielnote_erreicht())
+        self.assertTrue(self.studiengang.zielnote_erreicht())
 
     def test_ungueltige_ziele_werden_abgelehnt(self) -> None:
         with self.assertRaises(ValueError):
